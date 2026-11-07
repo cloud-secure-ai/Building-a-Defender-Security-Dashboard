@@ -1,0 +1,290 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Contoso Defender Dashboard\nDevice health, protection controls, alerts and attack surface reduction - live from advanced hunting."
+      },
+      "name": "header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "5f1c2a77-0b5e-4c1d-9a6e-7d1f0c3b2a01",
+            "version": "KqlParameterItem/1.0",
+            "name": "IdentityServers",
+            "label": "Tier 0 servers (comma-separated)",
+            "type": 1,
+            "value": "dc01,dc02,adfs01,ca01,aadc01"
+          }
+        ],
+        "style": "pills",
+        "queryType": "advancedHunting"
+      },
+      "name": "parameters"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Device health"
+      },
+      "name": "h-device"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "DeviceInfo\n| where Timestamp > ago(30d)\n| summarize arg_max(Timestamp, *) by DeviceId\n| where OnboardingStatus == \"Onboarded\"\n| extend Health = iff(Timestamp < ago(7d), \"Not seen for 7+ days\", SensorHealthState)\n| summarize Onboarded = count(),\n            Active = countif(Health == \"Active\"),\n            NotSeen = countif(Health == \"Not seen for 7+ days\"),\n            Unhealthy = countif(Health has \"Inactive\" or Health has \"Misconfigured\" or Health has \"Impaired\")\n| project Pairs = pack_array(pack(\"Status\", \"Onboarded\", \"Count\", Onboarded), pack(\"Status\", \"Active\", \"Count\", Active),\n                             pack(\"Status\", \"Not seen for 7+ days\", \"Count\", NotSeen), pack(\"Status\", \"Unhealthy\", \"Count\", Unhealthy))\n| mv-expand Pairs\n| project Status = tostring(Pairs.Status), Count = toint(Pairs.Count)",
+        "size": 4,
+        "title": "Sensor health at a glance",
+        "queryType": "advancedHunting",
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Status",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "Count",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            }
+          },
+          "showBorder": true
+        }
+      },
+      "name": "sensor-summary"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "DeviceInfo\n| where Timestamp > ago(30d)\n| summarize arg_max(Timestamp, *) by DeviceId\n| where OnboardingStatus == \"Onboarded\"\n| extend Health = iff(Timestamp < ago(7d), \"Not seen for 7+ days\", SensorHealthState)\n| extend Class = case(DeviceType == \"Server\" and OSPlatform startswith \"Windows\", \"Windows server\",\n                      OSPlatform == \"Linux\", \"Linux\",\n                      DeviceType == \"Workstation\", strcat(\"Workstation - \", OSPlatform), OSPlatform)\n| summarize Devices = count(),\n            Active = countif(Health == \"Active\"),\n            NotSeen = countif(Health == \"Not seen for 7+ days\"),\n            Inactive = countif(Health == \"Inactive\"),\n            Misconfigured = countif(Health has \"Misconfigured\"),\n            Impaired = countif(Health has \"Impaired\") by Class\n| order by Devices desc",
+        "size": 3,
+        "title": "Sensor health by device class",
+        "queryType": "advancedHunting",
+        "visualization": "table"
+      },
+      "name": "sensor-by-class"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "DeviceInfo\n| where Timestamp > ago(30d)\n| summarize arg_max(Timestamp, DeviceName, OSPlatform, DeviceType, SensorHealthState, OnboardingStatus, MachineGroup) by DeviceId\n| where OnboardingStatus == \"Onboarded\"\n| extend DaysSinceLastSeen = datetime_diff('day', now(), Timestamp)\n| where SensorHealthState != \"Active\" or DaysSinceLastSeen >= 7\n| project DeviceName, OSPlatform, DeviceType, SensorHealthState, LastSeen = Timestamp, DaysSinceLastSeen, DeviceGroup = MachineGroup\n| order by DaysSinceLastSeen desc",
+        "size": 3,
+        "title": "Devices not reporting a healthy sensor",
+        "queryType": "advancedHunting",
+        "visualization": "table"
+      },
+      "name": "inactive-devices"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let names = split(tolower(replace_string(\"{IdentityServers}\", \" \", \"\")), \",\");\nlet seen = DeviceInfo\n| where Timestamp > ago(30d)\n| summarize arg_max(Timestamp, DeviceName, OSPlatform, ClientVersion, SensorHealthState, OnboardingStatus, MachineGroup) by DeviceId\n| extend Host = tolower(tostring(split(DeviceName, \".\")[0]))\n| where Host in (names)\n| project Host, DeviceName, OnboardingStatus, SensorHealthState, ClientVersion, DeviceGroup = MachineGroup, LastSeen = Timestamp;\nprint Host = names\n| mv-expand Host to typeof(string)\n| where isnotempty(Host)\n| join kind=leftouter seen on Host\n| extend Status = iff(OnboardingStatus == \"Onboarded\" and SensorHealthState == \"Active\" and LastSeen > ago(7d), \"Healthy\", \"Needs attention\")\n| project Host, Status, OnboardingStatus, SensorHealthState, ClientVersion, DeviceGroup, LastSeen\n| order by Status desc, Host asc",
+        "size": 3,
+        "title": "Tier 0 identity servers",
+        "queryType": "advancedHunting",
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Healthy",
+                    "representation": "success",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "Default",
+                    "representation": "warning",
+                    "text": "{0}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "name": "identity-servers"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "DeviceInfo\n| where Timestamp > ago(30d)\n| summarize arg_max(Timestamp, OnboardingStatus, OSPlatform, DeviceType) by DeviceId\n| where OnboardingStatus == \"Can be onboarded\"\n| summarize Devices = count() by OSPlatform, DeviceType\n| order by Devices desc",
+        "size": 3,
+        "title": "Devices that can be onboarded",
+        "queryType": "advancedHunting",
+        "visualization": "table"
+      },
+      "name": "onboarding-gap"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Protection controls"
+      },
+      "name": "h-controls"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let dcNames = split(tolower(replace_string(\"{IdentityServers}\", \" \", \"\")), \",\");\nlet cls = DeviceInfo\n| where Timestamp > ago(30d)\n| summarize arg_max(Timestamp, DeviceName, DeviceType, OSPlatform) by DeviceId\n| extend Host = tolower(tostring(split(DeviceName, \".\")[0]))\n| extend Class = case(Host in (dcNames), \"Identity server\", OSPlatform == \"Linux\", \"Linux\",\n                      DeviceType == \"Server\", \"Windows server\", OSPlatform startswith \"Windows\", \"Workstation\", \"Other\")\n| project DeviceId, Class;\nDeviceTvmSecureConfigurationAssessment\n| where IsApplicable\n| join kind=inner cls on DeviceId\n| join kind=inner (DeviceTvmSecureConfigurationAssessmentKB\n    | project ConfigurationId, ConfigurationName, ConfigurationSubcategory) on ConfigurationId\n| where ConfigurationSubcategory in (\"Antivirus\", \"Attack Surface Reduction\", \"Bitlocker\", \"EDR\",\n                                     \"Exploit Guard\", \"Firewall\", \"SmartScreen\")\n| summarize Pct = round(100.0 * countif(IsCompliant) / count(), 0) by Area = ConfigurationSubcategory, Control = ConfigurationName, Class\n| evaluate pivot(Class, any(Pct), Area, Control)\n| order by Area asc, Control asc",
+        "size": 3,
+        "title": "Control compliance % by device class",
+        "queryType": "advancedHunting",
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "^(Workstation|Windows server|Identity server|Linux|Other)$",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "max": 100,
+                "palette": "redGreen"
+              }
+            }
+          ]
+        }
+      },
+      "name": "control-matrix"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "DeviceTvmSecureConfigurationAssessment\n| where IsApplicable\n| join kind=inner (DeviceTvmSecureConfigurationAssessmentKB\n    | project ConfigurationId, ConfigurationName, ConfigurationSubcategory) on ConfigurationId\n| where ConfigurationSubcategory in (\"Antivirus\", \"Attack Surface Reduction\", \"Bitlocker\", \"EDR\",\n                                     \"Exploit Guard\", \"Firewall\", \"SmartScreen\")\n| summarize NonCompliant = countif(not(IsCompliant)), Applicable = count() by ConfigurationName\n| where NonCompliant > 0\n| top 15 by NonCompliant desc\n| project Control = ConfigurationName, NonCompliant",
+        "size": 0,
+        "title": "Controls with the most non-compliant devices",
+        "queryType": "advancedHunting",
+        "visualization": "categoricalbar",
+        "chartSettings": {
+          "xAxis": "Control",
+          "yAxis": [
+            "NonCompliant"
+          ],
+          "showLegend": false
+        }
+      },
+      "name": "weakest-controls"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "DeviceTvmInfoGathering\n| extend AvMode = case(tostring(AdditionalFields.AvMode) == \"0\", \"Active\",\n                       tostring(AdditionalFields.AvMode) == \"1\", \"Passive\",\n                       tostring(AdditionalFields.AvMode) == \"4\", \"EDR in block mode\", \"Unknown\")\n| join kind=inner (DeviceInfo\n    | where Timestamp > ago(30d)\n    | summarize arg_max(Timestamp, OSPlatform) by DeviceId) on DeviceId\n| summarize Devices = count() by OSPlatform, AvMode\n| order by OSPlatform asc, Devices desc",
+        "size": 3,
+        "title": "Antivirus mode by platform",
+        "queryType": "advancedHunting",
+        "visualization": "table"
+      },
+      "name": "av-mode"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "DeviceTvmSecureConfigurationAssessment\n| where IsApplicable and not(IsCompliant)\n| join kind=inner (DeviceTvmSecureConfigurationAssessmentKB\n    | project ConfigurationId, ConfigurationName, ConfigurationSubcategory) on ConfigurationId\n| where ConfigurationSubcategory in (\"Antivirus\", \"EDR\")\n| summarize FailedControls = make_set(ConfigurationName) by DeviceName, OSPlatform\n| extend Failed = array_length(FailedControls)\n| order by Failed desc, DeviceName asc",
+        "size": 3,
+        "title": "Devices failing antivirus, tamper protection or EDR controls",
+        "queryType": "advancedHunting",
+        "visualization": "table"
+      },
+      "name": "tamper-av-gaps"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Alerts and attack surface reduction"
+      },
+      "name": "h-alerts"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AlertInfo\n| where Timestamp > ago(30d)\n| summarize Alerts = dcount(AlertId) by ServiceSource, Severity\n| order by Alerts desc",
+        "size": 0,
+        "title": "Alerts by source and severity (30 days)",
+        "queryType": "advancedHunting",
+        "visualization": "categoricalbar",
+        "chartSettings": {
+          "xAxis": "ServiceSource",
+          "yAxis": [
+            "Alerts"
+          ],
+          "group": "Severity",
+          "createOtherGroup": 0,
+          "showLegend": true
+        }
+      },
+      "name": "alerts-by-source"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AlertInfo\n| where Timestamp > ago(30d)\n| make-series Alerts = dcount(AlertId) default = 0 on Timestamp from startofday(ago(30d)) to now() step 1d by ServiceSource",
+        "size": 0,
+        "title": "Daily alerts by source",
+        "queryType": "advancedHunting",
+        "visualization": "timechart"
+      },
+      "name": "alerts-trend"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AlertInfo\n| where Timestamp > ago(30d)\n| summarize Alerts = dcount(AlertId), LastSeen = max(Timestamp) by Title, ServiceSource, Severity\n| top 20 by Alerts desc",
+        "size": 3,
+        "title": "Top 20 alert titles",
+        "queryType": "advancedHunting",
+        "visualization": "table"
+      },
+      "name": "top-alerts"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "DeviceEvents\n| where Timestamp > ago(30d)\n| where ActionType startswith \"Asr\"\n| extend Mode = iff(ActionType endswith \"Audited\", \"Audit\", \"Block\"),\n         Rule = replace_regex(ActionType, @\"^Asr|(Audited|Blocked)$\", \"\")\n| summarize Events = count(), Devices = dcount(DeviceId) by Rule, Mode\n| order by Events desc",
+        "size": 3,
+        "title": "ASR events by rule and mode",
+        "queryType": "advancedHunting",
+        "visualization": "table"
+      },
+      "name": "asr-by-rule"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "DeviceEvents\n| where Timestamp > ago(30d)\n| where ActionType startswith \"Asr\" and ActionType endswith \"Audited\"\n| summarize Events = count(), Devices = dcount(DeviceId), TopProcesses = make_set(InitiatingProcessFileName, 5) by Rule = ActionType\n| order by Devices asc, Events asc",
+        "size": 3,
+        "title": "Audit-mode ASR rules by devices affected",
+        "queryType": "advancedHunting",
+        "visualization": "table"
+      },
+      "name": "asr-ready"
+    }
+  ],
+  "isLocked": false,
+  "styleSettings": {},
+  "fromTemplateId": "sentinel-UserWorkbook"
+}
