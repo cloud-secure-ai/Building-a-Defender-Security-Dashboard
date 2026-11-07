@@ -1,0 +1,18 @@
+// Controls with the most non-compliant devices
+// Question: Where will one policy change fix the most devices?
+// Tables:   DeviceTvmSecureConfigurationAssessment, DeviceTvmSecureConfigurationAssessmentKB
+// Workbook: Categorical bar chart - Building a Defender Security Dashboard with Workbooks, Part 2
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+DeviceTvmSecureConfigurationAssessment
+| where IsApplicable
+| join kind=inner (DeviceTvmSecureConfigurationAssessmentKB
+    | project ConfigurationId, ConfigurationName, ConfigurationSubcategory) on ConfigurationId
+| where ConfigurationSubcategory in ("Antivirus", "Attack Surface Reduction", "Bitlocker", "EDR",
+                                     "Exploit Guard", "Firewall", "SmartScreen")
+| summarize NonCompliant = countif(not(IsCompliant)), Applicable = count() by ConfigurationName
+| where NonCompliant > 0
+| top 15 by NonCompliant desc
+| project Control = ConfigurationName, NonCompliant

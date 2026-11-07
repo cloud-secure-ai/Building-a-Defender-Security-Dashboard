@@ -1,0 +1,17 @@
+// Antivirus mode by platform
+// Question: Which devices run Defender Antivirus in passive or EDR block mode?
+// Tables:   DeviceTvmInfoGathering, DeviceInfo
+// Workbook: Table - Building a Defender Security Dashboard with Workbooks, Part 2
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+DeviceTvmInfoGathering
+| extend AvMode = case(tostring(AdditionalFields.AvMode) == "0", "Active",
+                       tostring(AdditionalFields.AvMode) == "1", "Passive",
+                       tostring(AdditionalFields.AvMode) == "4", "EDR in block mode", "Unknown")
+| join kind=inner (DeviceInfo
+    | where Timestamp > ago(30d)
+    | summarize arg_max(Timestamp, OSPlatform) by DeviceId) on DeviceId
+| summarize Devices = count() by OSPlatform, AvMode
+| order by OSPlatform asc, Devices desc

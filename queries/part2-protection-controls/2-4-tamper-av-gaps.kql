@@ -1,0 +1,16 @@
+// Devices failing antivirus, tamper protection or EDR controls
+// Question: Which devices fail the controls an attacker turns off first?
+// Tables:   DeviceTvmSecureConfigurationAssessment, DeviceTvmSecureConfigurationAssessmentKB
+// Workbook: Table - Building a Defender Security Dashboard with Workbooks, Part 2
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+DeviceTvmSecureConfigurationAssessment
+| where IsApplicable and not(IsCompliant)
+| join kind=inner (DeviceTvmSecureConfigurationAssessmentKB
+    | project ConfigurationId, ConfigurationName, ConfigurationSubcategory) on ConfigurationId
+| where ConfigurationSubcategory in ("Antivirus", "EDR")
+| summarize FailedControls = make_set(ConfigurationName) by DeviceName, OSPlatform
+| extend Failed = array_length(FailedControls)
+| order by Failed desc, DeviceName asc

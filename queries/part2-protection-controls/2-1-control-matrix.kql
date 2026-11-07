@@ -1,0 +1,28 @@
+// Control compliance % by device class
+// Question: Which protection controls are on, for each class of device?
+// Tables:   DeviceInfo, DeviceTvmSecureConfigurationAssessment, DeviceTvmSecureConfigurationAssessmentKB
+// Workbook: Table with colour scale - Building a Defender Security Dashboard with Workbooks, Part 2
+//
+// In the workbook, the host list comes from the IdentityServers parameter instead.
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+let dcNames = dynamic(["dc01", "dc02", "adfs01", "ca01", "aadc01"]);  // EDIT: short host names of your Tier 0 servers, in lower case
+let cls = DeviceInfo
+| where Timestamp > ago(30d)
+| summarize arg_max(Timestamp, DeviceName, DeviceType, OSPlatform) by DeviceId
+| extend Host = tolower(tostring(split(DeviceName, ".")[0]))
+| extend Class = case(Host in (dcNames), "Identity server", OSPlatform == "Linux", "Linux",
+                      DeviceType == "Server", "Windows server", OSPlatform startswith "Windows", "Workstation", "Other")
+| project DeviceId, Class;
+DeviceTvmSecureConfigurationAssessment
+| where IsApplicable
+| join kind=inner cls on DeviceId
+| join kind=inner (DeviceTvmSecureConfigurationAssessmentKB
+    | project ConfigurationId, ConfigurationName, ConfigurationSubcategory) on ConfigurationId
+| where ConfigurationSubcategory in ("Antivirus", "Attack Surface Reduction", "Bitlocker", "EDR",
+                                     "Exploit Guard", "Firewall", "SmartScreen")
+| summarize Pct = round(100.0 * countif(IsCompliant) / count(), 0) by Area = ConfigurationSubcategory, Control = ConfigurationName, Class
+| evaluate pivot(Class, any(Pct), Area, Control)
+| order by Area asc, Control asc
