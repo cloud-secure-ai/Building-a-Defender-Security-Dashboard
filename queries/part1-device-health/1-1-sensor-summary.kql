@@ -1,0 +1,21 @@
+// Sensor health at a glance
+// Question: How many onboarded devices are active, not seen for 7+ days, or unhealthy?
+// Tables:   DeviceInfo
+// Workbook: Tiles - Building a Defender Security Dashboard with Workbooks, Part 1
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+DeviceInfo
+| where Timestamp > ago(30d)
+| summarize arg_max(Timestamp, *) by DeviceId
+| where OnboardingStatus == "Onboarded"
+| extend Health = iff(Timestamp < ago(7d), "Not seen for 7+ days", SensorHealthState)
+| summarize Onboarded = count(),
+            Active = countif(Health == "Active"),
+            NotSeen = countif(Health == "Not seen for 7+ days"),
+            Unhealthy = countif(Health has "Inactive" or Health has "Misconfigured" or Health has "Impaired")
+| project Pairs = pack_array(pack("Status", "Onboarded", "Count", Onboarded), pack("Status", "Active", "Count", Active),
+                             pack("Status", "Not seen for 7+ days", "Count", NotSeen), pack("Status", "Unhealthy", "Count", Unhealthy))
+| mv-expand Pairs
+| project Status = tostring(Pairs.Status), Count = toint(Pairs.Count)

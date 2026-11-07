@@ -1,0 +1,16 @@
+// Devices not reporting a healthy sensor
+// Question: Which devices have stopped reporting, and for how long?
+// Tables:   DeviceInfo
+// Workbook: Table - Building a Defender Security Dashboard with Workbooks, Part 1
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+DeviceInfo
+| where Timestamp > ago(30d)
+| summarize arg_max(Timestamp, DeviceName, OSPlatform, DeviceType, SensorHealthState, OnboardingStatus, MachineGroup) by DeviceId
+| where OnboardingStatus == "Onboarded"
+| extend DaysSinceLastSeen = datetime_diff('day', now(), Timestamp)
+| where SensorHealthState != "Active" or DaysSinceLastSeen >= 7
+| project DeviceName, OSPlatform, DeviceType, SensorHealthState, LastSeen = Timestamp, DaysSinceLastSeen, DeviceGroup = MachineGroup
+| order by DaysSinceLastSeen desc

@@ -1,0 +1,14 @@
+// Devices that can be onboarded
+// Question: How many discovered devices are not yet onboarded, by platform?
+// Tables:   DeviceInfo
+// Workbook: Table - Building a Defender Security Dashboard with Workbooks, Part 1
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+DeviceInfo
+| where Timestamp > ago(30d)
+| summarize arg_max(Timestamp, OnboardingStatus, OSPlatform, DeviceType) by DeviceId
+| where OnboardingStatus == "Can be onboarded"
+| summarize Devices = count() by OSPlatform, DeviceType
+| order by Devices desc

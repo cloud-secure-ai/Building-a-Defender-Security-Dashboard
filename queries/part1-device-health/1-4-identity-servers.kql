@@ -1,0 +1,24 @@
+// Tier 0 identity servers
+// Question: Are our domain controllers, AD CS, AD FS and Entra Connect servers onboarded and healthy?
+// Tables:   DeviceInfo
+// Workbook: Table - Building a Defender Security Dashboard with Workbooks, Part 1
+//
+// In the workbook, the host list comes from the IdentityServers parameter instead.
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+let names = dynamic(["dc01", "dc02", "adfs01", "ca01", "aadc01"]);  // EDIT: short host names of your Tier 0 servers, in lower case
+let seen = DeviceInfo
+| where Timestamp > ago(30d)
+| summarize arg_max(Timestamp, DeviceName, OSPlatform, ClientVersion, SensorHealthState, OnboardingStatus, MachineGroup) by DeviceId
+| extend Host = tolower(tostring(split(DeviceName, ".")[0]))
+| where Host in (names)
+| project Host, DeviceName, OnboardingStatus, SensorHealthState, ClientVersion, DeviceGroup = MachineGroup, LastSeen = Timestamp;
+print Host = names
+| mv-expand Host to typeof(string)
+| where isnotempty(Host)
+| join kind=leftouter seen on Host
+| extend Status = iff(OnboardingStatus == "Onboarded" and SensorHealthState == "Active" and LastSeen > ago(7d), "Healthy", "Needs attention")
+| project Host, Status, OnboardingStatus, SensorHealthState, ClientVersion, DeviceGroup, LastSeen
+| order by Status desc, Host asc

@@ -1,0 +1,23 @@
+// Sensor health by device class
+// Question: Which device classes have sensors that are not reporting or unhealthy?
+// Tables:   DeviceInfo
+// Workbook: Table - Building a Defender Security Dashboard with Workbooks, Part 1
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+DeviceInfo
+| where Timestamp > ago(30d)
+| summarize arg_max(Timestamp, *) by DeviceId
+| where OnboardingStatus == "Onboarded"
+| extend Health = iff(Timestamp < ago(7d), "Not seen for 7+ days", SensorHealthState)
+| extend Class = case(DeviceType == "Server" and OSPlatform startswith "Windows", "Windows server",
+                      OSPlatform == "Linux", "Linux",
+                      DeviceType == "Workstation", strcat("Workstation - ", OSPlatform), OSPlatform)
+| summarize Devices = count(),
+            Active = countif(Health == "Active"),
+            NotSeen = countif(Health == "Not seen for 7+ days"),
+            Inactive = countif(Health == "Inactive"),
+            Misconfigured = countif(Health has "Misconfigured"),
+            Impaired = countif(Health has "Impaired") by Class
+| order by Devices desc
