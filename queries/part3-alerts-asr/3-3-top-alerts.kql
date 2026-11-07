@@ -1,0 +1,12 @@
+// Top 20 alert titles
+// Question: Which alerts keep coming back?
+// Tables:   AlertInfo
+// Workbook: Table - Building a Defender Security Dashboard with Workbooks, Part 3
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+AlertInfo
+| where Timestamp > ago(30d)
+| summarize Alerts = dcount(AlertId), LastSeen = max(Timestamp) by Title, ServiceSource, Severity
+| top 20 by Alerts desc

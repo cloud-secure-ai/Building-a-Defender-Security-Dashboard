@@ -1,0 +1,15 @@
+// ASR events by rule and mode
+// Question: Which ASR rules are blocking, and which are only auditing?
+// Tables:   DeviceEvents
+// Workbook: Table - Building a Defender Security Dashboard with Workbooks, Part 3
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+DeviceEvents
+| where Timestamp > ago(30d)
+| where ActionType startswith "Asr"
+| extend Mode = iff(ActionType endswith "Audited", "Audit", "Block"),
+         Rule = replace_regex(ActionType, @"^Asr|(Audited|Blocked)$", "")
+| summarize Events = count(), Devices = dcount(DeviceId) by Rule, Mode
+| order by Events desc

@@ -1,0 +1,12 @@
+// Alerts by source and severity
+// Question: Which products are generating alerts, and how severe are they?
+// Tables:   AlertInfo
+// Workbook: Categorical bar chart - Building a Defender Security Dashboard with Workbooks, Part 3
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+AlertInfo
+| where Timestamp > ago(30d)
+| summarize Alerts = dcount(AlertId) by ServiceSource, Severity
+| order by Alerts desc

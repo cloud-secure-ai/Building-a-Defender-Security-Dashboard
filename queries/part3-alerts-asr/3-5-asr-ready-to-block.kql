@@ -1,0 +1,13 @@
+// Audit-mode ASR rules by devices affected
+// Question: Which audit-mode ASR rules affect the fewest devices and are easiest to move to block?
+// Tables:   DeviceEvents
+// Workbook: Table - Building a Defender Security Dashboard with Workbooks, Part 3
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+DeviceEvents
+| where Timestamp > ago(30d)
+| where ActionType startswith "Asr" and ActionType endswith "Audited"
+| summarize Events = count(), Devices = dcount(DeviceId), TopProcesses = make_set(InitiatingProcessFileName, 5) by Rule = ActionType
+| order by Devices asc, Events asc

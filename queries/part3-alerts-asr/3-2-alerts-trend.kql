@@ -1,0 +1,11 @@
+// Daily alerts by source
+// Question: How has alert volume changed day by day over 30 days?
+// Tables:   AlertInfo
+// Workbook: Time chart - Building a Defender Security Dashboard with Workbooks, Part 3
+//
+// Author:   Seán O'Farrell - https://cloud-secure.ai/
+// Runs as-is in Microsoft Defender advanced hunting.
+
+AlertInfo
+| where Timestamp > ago(30d)
+| make-series Alerts = dcount(AlertId) default = 0 on Timestamp from startofday(ago(30d)) to now() step 1d by ServiceSource
